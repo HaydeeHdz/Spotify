@@ -9,15 +9,69 @@
 #import "AppDelegate.h"
 
 @interface AppDelegate ()
-
+@property (nonatomic, strong) SPTSession *session;
+@property (nonatomic, strong) SPTAudioStreamingController *player;
 @end
 
 @implementation AppDelegate
 
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-    // Override point for customization after application launch.
+    [[SPTAuth defaultInstance] setClientID:@"27ceaa0fa2f34e279f68ec7a9aa79e06"];
+    [[SPTAuth defaultInstance] setRedirectURL:[NSURL URLWithString:@"spotifylogin://callback"]];
+    [[SPTAuth defaultInstance] setRequestedScopes:@[SPTAuthStreamingScope]];
+    
+    // Construct a login URL and open it
+    NSURL *loginURL = [[SPTAuth defaultInstance] loginURL];
+    
+    // Opening a URL in Safari close to application launch may trigger
+    // an iOS bug, so we wait a bit before doing so.
+    [application performSelector:@selector(openURL:)
+                      withObject:loginURL afterDelay:0.1];
     return YES;
+}
+// Handle auth callback
+-(BOOL)application:(UIApplication *)application
+           openURL:(NSURL *)url
+ sourceApplication:(NSString *)sourceApplication
+        annotation:(id)annotation {
+    
+    // Ask SPTAuth if the URL given is a Spotify authentication callback
+    if ([[SPTAuth defaultInstance] canHandleURL:url]) {
+        [[SPTAuth defaultInstance] handleAuthCallbackWithTriggeredAuthURL:url callback:^(NSError *error, SPTSession *session) {
+            
+            if (error != nil) {
+                NSLog(@"*** Auth error: %@", error);
+                return;
+            }
+            
+            // Call the -loginUsingSession: method to login SDK
+            [self loginUsingSession:session];
+        }];
+        return YES;
+    }
+    
+    return NO;
+}
+
+-(void)loginUsingSession:(SPTSession *)session {
+    // Get the player instance
+    self.player = [SPTAudioStreamingController sharedInstance];
+    self.player.delegate = self;
+    // Start the player (will start a thread)
+    [self.player startWithClientId:@"27ceaa0fa2f34e279f68ec7a9aa79e06" error:nil];
+    // Login SDK before we can start playback
+    [self.player loginWithAccessToken:session.accessToken];
+}
+
+- (void)audioStreamingDidLogin:(SPTAudioStreamingController *)audioStreaming {
+    NSURL *url = [NSURL URLWithString:@"spotify:track:58s6EuEYJdlb0kO7awm3Vp"];
+    [self.player playURI:url callback:^(NSError *error) {
+        if (error != nil) {
+            NSLog(@"*** failed to play: %@", error);
+            return;
+        }
+    }];
 }
 
 - (void)applicationWillResignActive:(UIApplication *)application {
